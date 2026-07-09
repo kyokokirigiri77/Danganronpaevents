@@ -733,9 +733,17 @@
   });
 
   // ============================================================
-  // GİRİŞ YAP
+  // GİRİŞ YAP / ÇIKIŞ YAP
   // ============================================================
+  let heartbeatTimer = null;
+  const HEARTBEAT_MS = 20000;        // her 20 saniyede bir "hâlâ buradayım" sinyali
+  const STALE_AFTER_MS = 45000;      // 45 saniye sessizlik = oturum terk edilmiş say
+
   document.getElementById('btnLogin').addEventListener('click', () => {
+    if (currentUser){
+      doLogout();
+      return;
+    }
     document.getElementById('loginError').classList.remove('show');
     openModal('modalLogin');
   });
@@ -756,20 +764,47 @@
     submitBtn.disabled = true;
     submitBtn.textContent = 'Giriş yapılıyor...';
 
-    // Şifre doğrulaması client-side yapıldı, profil bilgisi (isim/ülke/renk/admin) Supabase'den geliyor
+    // Şifre doğrulaması client-side yapıldı, profil bilgisi Supabase'den geliyor
     const { data: profile, error } = await sb
       .from('players')
-      .select('display_name, country, color_hex, is_admin')
+      .select('display_name, country, color_hex, is_admin, is_online, last_seen')
       .eq('username', acc.name)
       .single();
+
+    if (error){
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Giriş Yap';
+      errBox.textContent = 'Profil bilgisi çekilemedi, internet bağlantını kontrol et.';
+      errBox.classList.add('show');
+      console.error(error);
+      return;
+    }
+
+    // Oturum kilidi kontrolü: hesap "online" işaretliyse VE son nefesi yakın zamandaysa reddet.
+    // last_seen çok eskiyse (sekme kapanmış/çökmüş demektir) kilidi görmezden gel.
+    const lastSeenMs = profile.last_seen ? new Date(profile.last_seen).getTime() : 0;
+    const isStale = (Date.now() - lastSeenMs) > STALE_AFTER_MS;
+    if (profile.is_online && !isStale){
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Giriş Yap';
+      errBox.textContent = 'Bu hesaba şu anda başka bir yerden giriş yapılmış durumda. Az sonra tekrar dene.';
+      errBox.classList.add('show');
+      return;
+    }
+
+    // Oturumu bu cihaza kilitle
+    const { error: lockError } = await sb
+      .from('players')
+      .update({ is_online: true, last_seen: new Date().toISOString() })
+      .eq('username', acc.name);
 
     submitBtn.disabled = false;
     submitBtn.textContent = 'Giriş Yap';
 
-    if (error){
-      errBox.textContent = 'Profil bilgisi çekilemedi, internet bağlantını kontrol et.';
+    if (lockError){
+      errBox.textContent = 'Oturum başlatılamadı, tekrar dene.';
       errBox.classList.add('show');
-      console.error(error);
+      console.error(lockError);
       return;
     }
 
@@ -784,7 +819,57 @@
     document.getElementById('loginPass').value = '';
     closeModal('modalLogin');
     unlockMenu();
+    startHeartbeat();
   });
+
+  // Sekme/tarayıcı kapatılırken kilidi bırakmayı dener (garantisi yok ama çoğu durumda çalışır)
+  window.addEventListener('pagehide', () => {
+    if (!currentUser) return;
+    fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${encodeURIComponent(currentUser.name)}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      keepalive: true,
+      body: JSON.stringify({ is_online: false })
+    });
+  });
+
+  function startHeartbeat(){
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    heartbeatTimer = setInterval(async () => {
+      if (!currentUser) return;
+      await sb.from('players')
+        .update({ last_seen: new Date().toISOString() })
+        .eq('username', currentUser.name);
+    }, HEARTBEAT_MS);
+  }
+
+  async function doLogout(){
+    if (!currentUser) return;
+    if (!confirm('Çıkış yapmak istediğine emin misin?')) return;
+
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+
+    await sb.from('players')
+      .update({ is_online: false })
+      .eq('username', currentUser.name);
+
+    currentUser = null;
+    lockMenu();
+  }
+
+  function lockMenu(){
+    document.querySelectorAll('.menu-btn').forEach(b => {
+      if (b.id !== 'btnLogin') b.classList.add('locked');
+    });
+    document.getElementById('userChip').classList.add('hidden');
+    const loginBtn = document.getElementById('btnLogin');
+    loginBtn.querySelector('small').textContent = 'Hesabınla oturum aç';
+  }
 
   function unlockMenu(){
     // Kilitli butonları aç
@@ -796,9 +881,9 @@
     document.getElementById('userChipName').textContent = currentUser.displayName;
     document.getElementById('userDot').style.background = currentUser.isAdmin ? '#c9a24b' : '#f0a8c6';
 
-    // Giriş butonunu "oturum açık" haline getir
+    // Giriş butonunu "Çıkış Yap" haline getir
     const loginBtn = document.getElementById('btnLogin');
-    loginBtn.querySelector('small').textContent = 'Oturum açık: ' + currentUser.displayName;
+    loginBtn.querySelector('small').textContent = 'Çıkış yap: ' + currentUser.displayName;
   }
 
   // ============================================================
@@ -950,6 +1035,11 @@
     (unique_color_when_set kısıtı) — tüm cihazlar için geçerli.
   - Oda katılma, "rooms" tablosundaki gerçek şifre ve is_open
     sütununa bakıyor.
+  - OTURUM KİLİDİ: aynı hesap (ör. player1) aynı anda iki farklı
+    yerden giriş yapamaz (is_online + last_seen ile kontrol edilir,
+    20 saniyede bir heartbeat atılır, 45 saniye sessizlik = terk
+    edilmiş oturum sayılır ve kilit otomatik açılır). Giriş butonu
+    artık oturum açıkken "Çıkış Yap"a dönüşüyor.
 
   HÂLÂ ÖNEMLİ NOTLAR:
   - Giriş şifreleri hâlâ İSTEMCİ TARAFLI (client-side) kontrol
