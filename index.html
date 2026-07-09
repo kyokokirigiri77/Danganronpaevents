@@ -531,6 +531,7 @@
 
     <!-- HESAP SEKMESİ -->
     <div class="tab-panel" id="tabHesap">
+      <div class="msg-box" id="accountMsg"></div>
       <div class="field">
         <label for="displayNameInput">Hesap Adı (görünen isim)</label>
         <input type="text" id="displayNameInput" maxlength="18" placeholder="Görünen isim">
@@ -549,7 +550,15 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+  // ============================================================
+  // SUPABASE BAĞLANTISI
+  // ============================================================
+  const SUPABASE_URL = "https://fxbzzgeectajvittjqhf.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_qQqdtWlmmi2LI9RDlq6M7g__sES5gIf";
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
   // ============================================================
   // VERİ TANIMLARI
   // ============================================================
@@ -577,13 +586,8 @@
     { name: "yedekplayer1", pass: "yedekplayer123", isAdmin: false }
   ];
 
-  // Geçerli oda listesi (şimdilik sunucu kapalı uyarısı için)
-  const ROOMS = {
-    "Oda1": "Oda1pass",
-    "Oda2": "Oda2pass",
-    "Oda3": "Oda3pass",
-    "Etkinlikodasi": "Etkinlikpass"
-  };
+  // Oda listesi artık Supabase "rooms" tablosundan geliyor (bkz. loadRoomsFromSupabase)
+  let ROOMS_CACHE = []; // [{ room_name, room_password, is_open }, ...]
 
   const COUNTRIES = [
     "Türkiye", "Almanya", "Japonya", "Güney Kore", "Fransa", "İtalya",
@@ -610,9 +614,9 @@
     { name: "Fuşya",     hex: "#c22bb0" }
   ];
 
-  // Renk sahiplikleri — prototipte sadece bu tarayıcı oturumu için geçerli.
-  // Gerçek çoklu-oyuncu çakışma engeli Supabase bağlanınca eklenecek.
-  const colorOwners = {}; // { "#c81d3f": "player1" }
+  // Renk sahiplikleri — artık Supabase "players" tablosundan çekiliyor
+  // (bkz. refreshColorOwners). Böylece renk çakışması tüm cihazlar için geçerli.
+  let colorOwners = {}; // { "#c81d3f": "player1" }
 
   // ============================================================
   // STATE
@@ -622,14 +626,14 @@
   // ============================================================
   // AÇILIŞ
   // ============================================================
-  window.addEventListener('DOMContentLoaded', () => {
+  window.addEventListener('DOMContentLoaded', async () => {
     requestAnimationFrame(() => {
       document.getElementById('menuStage').classList.add('loaded');
     });
     buildLoginOptions();
-    buildRoomOptions();
     buildCountryOptions();
     buildColorGrid();
+    await loadRoomsFromSupabase();
   });
 
   function buildLoginOptions(){
@@ -642,12 +646,21 @@
     });
   }
 
-  function buildRoomOptions(){
+  // Supabase "rooms" tablosundan oda listesini çeker ve dropdown'ı doldurur
+  async function loadRoomsFromSupabase(){
+    const { data, error } = await sb.from('rooms').select('room_name, room_password, is_open');
+    if (error){
+      console.error('Oda listesi çekilemedi:', error);
+      return;
+    }
+    ROOMS_CACHE = data;
+
     const sel = document.getElementById('joinRoomName');
-    Object.keys(ROOMS).forEach(roomName => {
+    sel.innerHTML = '';
+    ROOMS_CACHE.forEach(room => {
       const opt = document.createElement('option');
-      opt.value = roomName;
-      opt.textContent = roomName;
+      opt.value = room.room_name;
+      opt.textContent = room.room_name;
       sel.appendChild(opt);
     });
   }
@@ -662,6 +675,17 @@
     });
   }
 
+  // Supabase'den kimin hangi rengi seçtiğini çeker (color_hex dolu olan tüm oyuncular)
+  async function refreshColorOwners(){
+    const { data, error } = await sb.from('players').select('username, color_hex').not('color_hex', 'is', null);
+    if (error){
+      console.error('Renk sahiplikleri çekilemedi:', error);
+      return;
+    }
+    colorOwners = {};
+    data.forEach(row => { colorOwners[row.color_hex] = row.username; });
+  }
+
   function buildColorGrid(){
     const grid = document.getElementById('colorGrid');
     grid.innerHTML = '';
@@ -673,8 +697,10 @@
       sw.dataset.hex = color.hex;
 
       const owner = colorOwners[color.hex];
-      const isMine = currentUser && owner === currentUser.name;
-      const isTaken = owner && !isMine;
+      // currentUser.color henüz Supabase'e kaydedilmemiş "geçici seçim" olabilir,
+      // o yüzden hem DB sahipliğine hem de seçili olan geçici renge bakıyoruz.
+      const isMine = currentUser && (owner === currentUser.name || currentUser.color === color.hex);
+      const isTaken = owner && owner !== (currentUser && currentUser.name);
 
       if (isTaken) sw.classList.add('taken');
       if (isMine) sw.classList.add('selected');
@@ -682,11 +708,7 @@
       sw.addEventListener('click', () => {
         if (isTaken) return; // başkasına ait, seçilemez
         if (!currentUser) return;
-        // Bu kullanıcının önceki rengini serbest bırak
-        Object.keys(colorOwners).forEach(hex => {
-          if (colorOwners[hex] === currentUser.name) delete colorOwners[hex];
-        });
-        colorOwners[color.hex] = currentUser.name;
+        // Sadece geçici seçim — Supabase'e yazma işlemi "Kaydet" butonunda olur
         currentUser.color = color.hex;
         buildColorGrid();
       });
@@ -718,10 +740,11 @@
     openModal('modalLogin');
   });
 
-  document.getElementById('loginSubmit').addEventListener('click', () => {
+  document.getElementById('loginSubmit').addEventListener('click', async () => {
     const name = document.getElementById('loginName').value;
     const pass = document.getElementById('loginPass').value.trim();
     const errBox = document.getElementById('loginError');
+    const submitBtn = document.getElementById('loginSubmit');
 
     const acc = ACCOUNTS.find(a => a.name === name && a.pass === pass);
     if (!acc){
@@ -730,12 +753,32 @@
       return;
     }
 
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Giriş yapılıyor...';
+
+    // Şifre doğrulaması client-side yapıldı, profil bilgisi (isim/ülke/renk/admin) Supabase'den geliyor
+    const { data: profile, error } = await sb
+      .from('players')
+      .select('display_name, country, color_hex, is_admin')
+      .eq('username', acc.name)
+      .single();
+
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Giriş Yap';
+
+    if (error){
+      errBox.textContent = 'Profil bilgisi çekilemedi, internet bağlantını kontrol et.';
+      errBox.classList.add('show');
+      console.error(error);
+      return;
+    }
+
     currentUser = {
       name: acc.name,
-      isAdmin: acc.isAdmin,
-      displayName: acc.name,
-      country: null,
-      color: null
+      isAdmin: profile.is_admin,
+      displayName: profile.display_name || acc.name,
+      country: profile.country,
+      color: profile.color_hex
     };
 
     document.getElementById('loginPass').value = '';
@@ -766,23 +809,33 @@
     openModal('modalJoin');
   });
 
-  document.getElementById('joinSubmit').addEventListener('click', () => {
+  document.getElementById('joinSubmit').addEventListener('click', async () => {
     const roomName = document.getElementById('joinRoomName').value;
     const roomPass = document.getElementById('joinRoomPass').value;
     const msg = document.getElementById('joinMsg');
 
-    if (ROOMS[roomName] !== roomPass){
+    // En güncel oda listesini tekrar çek (biri az önce açmış/kapatmış olabilir)
+    await loadRoomsFromSupabase();
+    const room = ROOMS_CACHE.find(r => r.room_name === roomName);
+
+    if (!room || room.room_password !== roomPass){
       msg.textContent = 'Oda adı veya şifre hatalı.';
       msg.classList.remove('ok');
       msg.classList.add('show');
       return;
     }
 
-    // Doğrulama başarılı ama gerçek sunucu bağlantısı henüz yok
-    msg.textContent = 'Oda bilgileri doğru, fakat sunucu şu an kapalı. Daha sonra tekrar deneyin.';
-    msg.classList.remove('ok');
+    if (!room.is_open){
+      msg.textContent = 'Oda bilgileri doğru, fakat sunucu şu an kapalı. Daha sonra tekrar deneyin.';
+      msg.classList.remove('ok');
+      msg.classList.add('show');
+      return;
+    }
+
+    msg.textContent = 'Odaya bağlanılıyor...';
+    msg.classList.add('ok');
     msg.classList.add('show');
-    // TODO: Supabase realtime kanalına bağlanma buraya eklenecek
+    // TODO: Oda içi bekleme ekranına yönlendirme buraya eklenecek (lobi.html gibi)
   });
 
   // ============================================================
@@ -801,10 +854,12 @@
   // ============================================================
   // AYARLAR
   // ============================================================
-  document.getElementById('btnSettings').addEventListener('click', () => {
+  document.getElementById('btnSettings').addEventListener('click', async () => {
     if (!currentUser) return;
     document.getElementById('displayNameInput').value = currentUser.displayName;
     document.getElementById('countrySelect').value = currentUser.country || '';
+    document.getElementById('accountMsg').classList.remove('show', 'ok');
+    await refreshColorOwners();
     buildColorGrid();
     openModal('modalSettings');
   });
@@ -830,18 +885,48 @@
     // TODO: gerçek efekt ses seviyesine bağlanacak
   });
 
-  // Hesap kaydet
-  document.getElementById('saveAccountBtn').addEventListener('click', () => {
+  // Hesap kaydet — artık gerçekten Supabase "players" tablosuna yazıyor
+  document.getElementById('saveAccountBtn').addEventListener('click', async () => {
     if (!currentUser) return;
+    const saveBtn = document.getElementById('saveAccountBtn');
+    const msg = document.getElementById('accountMsg');
     const newDisplayName = document.getElementById('displayNameInput').value.trim();
     const newCountry = document.getElementById('countrySelect').value;
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Kaydediliyor...';
+    msg.classList.remove('show', 'ok');
+
+    const { error } = await sb
+      .from('players')
+      .update({
+        display_name: newDisplayName || currentUser.name,
+        country: newCountry || null,
+        color_hex: currentUser.color || null
+      })
+      .eq('username', currentUser.name);
+
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Kaydet';
+
+    if (error){
+      // En olası sebep: seçilen renk az önce başka biri tarafından alındı
+      // (veritabanındaki unique_color_when_set kısıtı bunu engelliyor)
+      msg.textContent = 'Kaydedilemedi — seçtiğin renk az önce başka biri tarafından alınmış olabilir. Farklı bir renk seç.';
+      msg.classList.add('show');
+      console.error(error);
+      await refreshColorOwners();
+      buildColorGrid();
+      return;
+    }
 
     if (newDisplayName) currentUser.displayName = newDisplayName;
     currentUser.country = newCountry;
 
     document.getElementById('userChipName').textContent = currentUser.displayName;
-    closeModal('modalSettings');
-    // TODO: Bu bilgiler Supabase "players" tablosuna yazılacak
+    msg.textContent = 'Kaydedildi!';
+    msg.classList.add('show', 'ok');
+    setTimeout(() => closeModal('modalSettings'), 700);
   });
 </script>
 
@@ -852,22 +937,29 @@
   ============================================================
   BU KOD: ANA MENÜ EKRANI (index.html)
   Amaç: Oyunun açılış ekranı. Sabit hesap listesiyle giriş,
-  admin kontrollü oda kurma, oda katılma (şimdilik "sunucu kapalı"
-  uyarısı), ayarlar (ses seviyeleri + hesap adı/ülke/renk seçimi).
+  admin kontrollü oda kurma, gerçek Supabase verisiyle oda katılma,
+  ayarlar (ses seviyeleri + hesap adı/ülke/renk — hepsi Supabase'e
+  kaydediliyor).
 
-  ÖNEMLİ NOTLAR:
-  - Giriş sistemi şu an İSTEMCİ TARAFLI (client-side) sabit bir
-    liste ile çalışıyor. Şifreler tarayıcı kaynak kodunda görünür
-    haldedir. Kapalı/özel bir grup için yeterli ama gerçek güvenlik
-    için ileride Supabase Auth'a geçirilmeli.
-  - Renk seçimi "taken/alınamaz" mantığı şu an sadece TEK TARAYICI
-    OTURUMU için çalışıyor (bellekte tutuluyor). Farklı oyuncuların
-    farklı cihazlarda birbirinin rengini gerçekten alamaması için
-    Supabase "players" tablosu + realtime senkronizasyon gerekiyor.
+  ARTIK SUPABASE'E BAĞLI:
+  - Giriş sonrası profil bilgisi (görünen isim, ülke, renk, admin
+    mi) "players" tablosundan çekiliyor.
+  - Ayarlar > Kaydet, bu bilgileri gerçekten "players" tablosuna
+    yazıyor.
+  - Renk çakışması artık veritabanı seviyesinde engelleniyor
+    (unique_color_when_set kısıtı) — tüm cihazlar için geçerli.
+  - Oda katılma, "rooms" tablosundaki gerçek şifre ve is_open
+    sütununa bakıyor.
+
+  HÂLÂ ÖNEMLİ NOTLAR:
+  - Giriş şifreleri hâlâ İSTEMCİ TARAFLI (client-side) kontrol
+    ediliyor, Supabase Auth kullanılmıyor. Kapalı/özel bir grup
+    için yeterli ama tarayıcı kaynak kodunda görünür haldedir.
   - player16 şifresi eksikti, geçici olarak "DEGISTIR_BENI" atandı.
+  - "Oda Kur" hâlâ placeholder (gerçek oda oluşturma ekranı yok).
 
-  Sıradaki adım: Supabase client kurulumu (URL + publishable key),
-  players/rooms tabloları, ve yukarıdaki TODO'lu yerlerin gerçek
-  Supabase çağrılarına bağlanması.
+  Sıradaki adım: Oda içi bekleme ekranı (lobi.html) — oyuncuların
+  odaya girdikten sonra göreceği ekran, Monokuma rolü rastgele
+  atama, ve oyuncu listesinin gerçek zamanlı (realtime) senkronu.
   ============================================================
 -->
