@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>The Danganronpa Championship &amp; Events</title>
+<style>
+  :root{
+    --ink-black:#141018;
+    --ink-black-2:#1d1723;
+    --paper-white:#f3ede2;
+    --paper-white-2:#e8e0d0;
+    --blood-red:#c81d3f;
+    --blood-red-dark:#8f1230;
+    --candy-pink:#f0a8c6;
+    --gold-trim:#c9a24b;
+    --ok-green:#3f9b5b;
+    --font-display: 'Archivo Black', 'Arial Black', sans-serif;
+    --font-body: 'Segoe UI', system-ui, sans-serif;
+  }
+
+  *{ margin:0; padding:0; box-sizing:border-box; }
+
+  html,body{
+    width:100%; height:100%;
+    overflow:hidden;
+    background:var(--ink-black);
+    font-family:var(--font-body);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* ============ ANA SAHNE ============ */
+  .menu-stage{
+    position:relative;
+    width:100vw;
+    height:100vh;
+    height:100dvh;
+    overflow:hidden;
+  }
+
+  .half{
+    position:absolute;
+    top:0; height:100%;
+    width:60%;
+    transition: transform 1.4s cubic-bezier(.16,1,.3,1);
+  }
+  .half.black{
+    left:0;
+    background: linear-gradient(135deg, var(--ink-black) 0%, var(--ink-black-2) 100%);
+    clip-path: polygon(0 0, 68% 0, 46% 100%, 0 100%);
+    transform: translateX(-4%);
+    z-index:2;
+  }
+  .half.white{
+    right:0;
+    background: linear-gradient(135deg, var(--paper-white) 0%, var(--paper-white-2) 100%);
+    clip-path: polygon(52% 0, 100% 0, 100% 100%, 30% 100%);
+    transform: translateX(4%);
+    z-index:1;
+  }
+  .menu-stage.loaded .half.black{ transform: translateX(0); }
+  .menu-stage.loaded .half.white{ transform: translateX(0); }
+
+  .crack-line{
+    position:absolute;
+    top:0; left:50%;
+    width:6px; height:100%;
+    background: linear-gradient(180deg, var(--blood-red), var(--gold-trim), var(--blood-red));
+    transform: translateX(-50%) skewX(-12deg) scaleY(0);
+    transform-origin: top;
+    z-index:3;
+    box-shadow: 0 0 24px 2px rgba(200,29,63,0.55);
+    transition: transform 0.9s cubic-bezier(.7,0,.3,1) 0.3s;
+    pointer-events:none;
+  }
+  .menu-stage.loaded .crack-line{ transform: translateX(-50%) skewX(-12deg) scaleY(1); }
+
+  /* ============ ÜST BAR (isim gösterimi) ============ */
+  .topbar{
+    position:absolute;
+    top:16px; right:18px;
+    z-index:20;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    opacity:0;
+    transition: opacity 0.5s ease 1.6s;
+  }
+  .menu-stage.loaded .topbar{ opacity:1; }
+  .user-chip{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    background: rgba(20,16,24,0.55);
+    border: 1px solid var(--gold-trim);
+    border-radius: 999px;
+    padding: 7px 14px 7px 8px;
+    backdrop-filter: blur(4px);
+  }
+  .user-chip .dot{
+    width:10px; height:10px; border-radius:50%;
+    background: var(--candy-pink);
+    border: 2px solid var(--paper-white);
+  }
+  .user-chip span{
+    font-size: 13px;
+    color: var(--paper-white);
+    letter-spacing:0.03em;
+    font-weight:600;
+  }
+  .user-chip.hidden{ display:none; }
+
+  /* ============ İÇERİK KATMANI ============ */
+  .content{
+    position:relative;
+    z-index:5;
+    width:100%; height:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    padding: 24px;
+    text-align:center;
+  }
+
+  .eyebrow{
+    font-family:var(--font-body);
+    letter-spacing: 0.35em;
+    font-size: 12px;
+    color: var(--candy-pink);
+    opacity:0;
+    transform: translateY(10px);
+    transition: all 0.6s ease 0.9s;
+  }
+  .menu-stage.loaded .eyebrow{ opacity:1; transform:translateY(0); }
+
+  .title{
+    font-family:var(--font-display);
+    font-size: clamp(2.2rem, 9vw, 5rem);
+    line-height:0.95;
+    margin-top:10px;
+    color: var(--paper-white);
+    -webkit-text-stroke: 2px var(--ink-black);
+    text-shadow:
+      3px 3px 0 var(--blood-red),
+      6px 6px 0 var(--ink-black);
+    opacity:0;
+    transform: translateY(18px) scale(0.96);
+    transition: all 0.7s cubic-bezier(.16,1,.3,1) 1s;
+  }
+  .menu-stage.loaded .title{ opacity:1; transform: translateY(0) scale(1); }
+
+  .subtitle{
+    margin-top: 14px;
+    font-size: clamp(0.8rem, 2.4vw, 1rem);
+    color: var(--gold-trim);
+    letter-spacing:0.08em;
+    opacity:0;
+    transition: opacity 0.6s ease 1.3s;
+  }
+  .menu-stage.loaded .subtitle{ opacity:0.9; }
+
+  /* ============ MENÜ BUTONLARI ============ */
+  .menu-list{
+    margin-top: 40px;
+    display:flex;
+    flex-direction:column;
+    gap: 14px;
+    width: min(340px, 82vw);
+    opacity:0;
+    transform: translateY(16px);
+    transition: all 0.6s ease 1.5s;
+  }
+  .menu-stage.loaded .menu-list{ opacity:1; transform:translateY(0); }
+
+  .menu-btn{
+    position:relative;
+    font-family:var(--font-display);
+    font-size: 15px;
+    letter-spacing: 0.06em;
+    padding: 16px 20px;
+    border: none;
+    border-radius: 2px;
+    background: var(--paper-white);
+    color: var(--ink-black);
+    cursor:pointer;
+    overflow:hidden;
+    clip-path: polygon(0 0, 100% 0, 96% 100%, 0% 100%);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.2s ease;
+    box-shadow: 4px 4px 0 var(--blood-red-dark);
+  }
+  .menu-btn:hover{
+    transform: translate(-2px,-2px);
+    box-shadow: 6px 6px 0 var(--blood-red-dark);
+  }
+  .menu-btn:active{
+    transform: translate(1px,1px);
+    box-shadow: 2px 2px 0 var(--blood-red-dark);
+  }
+  .menu-btn.primary{
+    background: var(--blood-red);
+    color: var(--paper-white);
+    box-shadow: 4px 4px 0 var(--ink-black);
+  }
+  .menu-btn.primary:hover{ box-shadow: 6px 6px 0 var(--ink-black); }
+
+  .menu-btn.locked{
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  .menu-btn small{
+    display:block;
+    font-family: var(--font-body);
+    font-weight:400;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    opacity:0.65;
+    margin-top:2px;
+  }
+
+  .footer-note{
+    position:absolute;
+    bottom: 14px;
+    left:0; right:0;
+    text-align:center;
+    font-size: 11px;
+    letter-spacing:0.12em;
+    color: var(--paper-white);
+    opacity:0.35;
+    z-index:5;
+  }
+
+  /* ============ MODAL SİSTEMİ ============ */
+  .modal-overlay{
+    position:fixed; inset:0;
+    background: rgba(10,8,12,0.72);
+    backdrop-filter: blur(3px);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:100;
+    padding: 20px;
+  }
+  .modal-overlay.open{ display:flex; }
+
+  .modal-panel{
+    width: min(420px, 100%);
+    max-height: 86vh;
+    overflow-y:auto;
+    background: var(--paper-white);
+    border: 3px solid var(--ink-black);
+    box-shadow: 8px 8px 0 var(--blood-red);
+    padding: 26px 24px;
+    position:relative;
+  }
+
+  .modal-panel h2{
+    font-family: var(--font-display);
+    font-size: 22px;
+    color: var(--ink-black);
+    letter-spacing:0.02em;
+    margin-bottom: 6px;
+  }
+  .modal-sub{
+    font-size: 12px;
+    color: var(--blood-red-dark);
+    letter-spacing:0.05em;
+    margin-bottom: 18px;
+  }
+
+  .modal-close{
+    position:absolute;
+    top:14px; right:14px;
+    width:30px; height:30px;
+    border:2px solid var(--ink-black);
+    background: var(--paper-white);
+    font-family: var(--font-display);
+    font-size:14px;
+    cursor:pointer;
+    line-height:1;
+  }
+  .modal-close:hover{ background: var(--blood-red); color:var(--paper-white); }
+
+  .field{
+    margin-bottom: 16px;
+    text-align:left;
+  }
+  .field label{
+    display:block;
+    font-size: 11px;
+    font-weight:700;
+    letter-spacing: 0.08em;
+    text-transform:uppercase;
+    color: var(--ink-black);
+    margin-bottom: 6px;
+  }
+  .field select, .field input{
+    width:100%;
+    padding: 11px 12px;
+    border: 2px solid var(--ink-black);
+    background: #fff;
+    font-size: 14px;
+    font-family: var(--font-body);
+  }
+  .field select:focus, .field input:focus{
+    outline: 3px solid var(--gold-trim);
+    outline-offset: 1px;
+  }
+
+  .msg-box{
+    font-size: 13px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    border-left: 4px solid var(--blood-red);
+    background: #fff2f2;
+    color: var(--blood-red-dark);
+    display:none;
+  }
+  .msg-box.show{ display:block; }
+  .msg-box.ok{
+    border-left-color: var(--ok-green);
+    background: #f0fbf3;
+    color: #256b3c;
+  }
+
+  .modal-submit{
+    width:100%;
+    font-family: var(--font-display);
+    font-size:14px;
+    letter-spacing:0.05em;
+    padding: 13px;
+    background: var(--blood-red);
+    color: var(--paper-white);
+    border:none;
+    box-shadow: 4px 4px 0 var(--ink-black);
+    cursor:pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .modal-submit:hover{ transform: translate(-2px,-2px); box-shadow:6px 6px 0 var(--ink-black); }
+  .modal-submit:active{ transform: translate(1px,1px); box-shadow:2px 2px 0 var(--ink-black); }
+
+  /* Tabs (Ayarlar modalı) */
+  .tab-row{
+    display:flex;
+    gap:8px;
+    margin-bottom: 18px;
+    border-bottom: 2px solid var(--ink-black);
+  }
+  .tab-btn{
+    flex:1;
+    padding: 9px 4px;
+    background:none;
+    border:none;
+    font-family: var(--font-display);
+    font-size: 12px;
+    letter-spacing:0.05em;
+    color: var(--ink-black);
+    opacity:0.45;
+    cursor:pointer;
+    border-bottom: 3px solid transparent;
+    margin-bottom:-2px;
+  }
+  .tab-btn.active{
+    opacity:1;
+    border-bottom-color: var(--blood-red);
+  }
+  .tab-panel{ display:none; }
+  .tab-panel.active{ display:block; }
+
+  .slider-row{ margin-bottom:18px; }
+  .slider-row label{
+    display:flex; justify-content:space-between;
+    font-size: 11px; font-weight:700; letter-spacing:0.06em;
+    text-transform:uppercase; color:var(--ink-black); margin-bottom:8px;
+  }
+  .slider-row input[type="range"]{ width:100%; accent-color: var(--blood-red); }
+
+  /* Renk paleti */
+  .color-grid{
+    display:grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .swatch{
+    aspect-ratio: 1;
+    border: 3px solid var(--ink-black);
+    cursor:pointer;
+    position:relative;
+    transition: transform 0.12s ease;
+  }
+  .swatch:hover{ transform: scale(1.06); }
+  .swatch.selected{ outline: 3px solid var(--gold-trim); outline-offset:2px; }
+  .swatch.taken{
+    cursor:not-allowed;
+    opacity:0.3;
+  }
+  .swatch.taken::after{
+    content:"✕";
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    color:#fff; font-weight:900; font-size:16px;
+    text-shadow: 0 0 3px #000;
+  }
+  .swatch-note{
+    font-size: 11px;
+    color: var(--blood-red-dark);
+    margin-bottom:16px;
+  }
+</style>
+</head>
+<body>
+
+<div class="menu-stage" id="menuStage">
+  <div class="half black"></div>
+  <div class="half white"></div>
+  <div class="crack-line"></div>
+
+  <div class="topbar">
+    <div class="user-chip hidden" id="userChip">
+      <div class="dot" id="userDot"></div>
+      <span id="userChipName">—</span>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="eyebrow">THE CHAMPIONSHIP &amp; EVENTS</div>
+    <h1 class="title">DANGANRONPA</h1>
+    <p class="subtitle">// Kapalı beta &mdash; sadece davetliler</p>
+
+    <nav class="menu-list" aria-label="Ana menü">
+      <button class="menu-btn primary" id="btnLogin">
+        Giriş Yap
+        <small>Hesabınla oturum aç</small>
+      </button>
+      <button class="menu-btn locked" id="btnJoinRoom">
+        Odaya Katıl
+        <small>Lobi kodu ile bir oyuna gir</small>
+      </button>
+      <button class="menu-btn locked" id="btnCreateRoom">
+        Oda Kur
+        <small>Kendi Sınıfını başlat</small>
+      </button>
+      <button class="menu-btn locked" id="btnSettings">
+        Ayarlar
+        <small>Ses, dil, görüntü</small>
+      </button>
+    </nav>
+  </div>
+
+  <div class="footer-note">KAPALI BETA — SADECE DAVETLİLER İÇİNDİR</div>
+</div>
+
+<!-- ==================== GİRİŞ MODALI ==================== -->
+<div class="modal-overlay" id="modalLogin">
+  <div class="modal-panel">
+    <button class="modal-close" data-close="modalLogin">✕</button>
+    <h2>Giriş Yap</h2>
+    <p class="modal-sub">Öğrenci kimliğini seç, şifreni gir.</p>
+
+    <div class="msg-box" id="loginError">İsim veya şifre hatalı.</div>
+
+    <div class="field">
+      <label for="loginName">İsim</label>
+      <select id="loginName"></select>
+    </div>
+    <div class="field">
+      <label for="loginPass">Şifre</label>
+      <input type="password" id="loginPass" placeholder="••••••••" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+    </div>
+
+    <button class="modal-submit" id="loginSubmit">Giriş Yap</button>
+  </div>
+</div>
+
+<!-- ==================== ODAYA KATIL MODALI ==================== -->
+<div class="modal-overlay" id="modalJoin">
+  <div class="modal-panel">
+    <button class="modal-close" data-close="modalJoin">✕</button>
+    <h2>Odaya Katıl</h2>
+    <p class="modal-sub">Lobi adını ve şifresini gir.</p>
+
+    <div class="msg-box" id="joinMsg"></div>
+
+    <div class="field">
+      <label for="joinRoomName">Oda Adı</label>
+      <select id="joinRoomName"></select>
+    </div>
+    <div class="field">
+      <label for="joinRoomPass">Oda Şifresi</label>
+      <input type="password" id="joinRoomPass" placeholder="••••••••" autocomplete="off">
+    </div>
+
+    <button class="modal-submit" id="joinSubmit">Katıl</button>
+  </div>
+</div>
+
+<!-- ==================== ODA KUR UYARI MODALI ==================== -->
+<div class="modal-overlay" id="modalAdminWarn">
+  <div class="modal-panel">
+    <button class="modal-close" data-close="modalAdminWarn">✕</button>
+    <h2>Yetki Yok</h2>
+    <div class="msg-box show">Bu işlem için Admin izni gerekiyor.</div>
+  </div>
+</div>
+
+<!-- ==================== AYARLAR MODALI ==================== -->
+<div class="modal-overlay" id="modalSettings">
+  <div class="modal-panel">
+    <button class="modal-close" data-close="modalSettings">✕</button>
+    <h2>Ayarlar</h2>
+
+    <div class="tab-row">
+      <button class="tab-btn active" data-tab="tabSes">Ses</button>
+      <button class="tab-btn" data-tab="tabHesap">Hesap</button>
+    </div>
+
+    <!-- SES SEKMESİ -->
+    <div class="tab-panel active" id="tabSes">
+      <div class="slider-row">
+        <label><span>Müzik Sesi</span><span id="musicVal">70%</span></label>
+        <input type="range" id="musicSlider" min="0" max="100" value="70">
+      </div>
+      <div class="slider-row">
+        <label><span>Efekt Sesi</span><span id="sfxVal">80%</span></label>
+        <input type="range" id="sfxSlider" min="0" max="100" value="80">
+      </div>
+    </div>
+
+    <!-- HESAP SEKMESİ -->
+    <div class="tab-panel" id="tabHesap">
+      <div class="field">
+        <label for="displayNameInput">Hesap Adı (görünen isim)</label>
+        <input type="text" id="displayNameInput" maxlength="18" placeholder="Görünen isim">
+      </div>
+      <div class="field">
+        <label for="countrySelect">Ülke</label>
+        <select id="countrySelect"></select>
+      </div>
+      <div class="field">
+        <label>Renk</label>
+        <div class="color-grid" id="colorGrid"></div>
+        <div class="swatch-note">Dolu renkler başkasına ait — seçilemez.</div>
+      </div>
+      <button class="modal-submit" id="saveAccountBtn">Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ============================================================
+  // VERİ TANIMLARI
+  // ============================================================
+
+  // Sabit hesap listesi (prototip aşaması — gerçek auth Supabase ile gelecek)
+  const ACCOUNTS = [
+    { name: "Admin",        pass: "admin123",   isAdmin: true  },
+    { name: "player1",      pass: "player123",  isAdmin: false },
+    { name: "player2",      pass: "player234",  isAdmin: false },
+    { name: "player3",      pass: "player345",  isAdmin: false },
+    { name: "player4",      pass: "player456",  isAdmin: false },
+    { name: "player5",      pass: "player567",  isAdmin: false },
+    { name: "player6",      pass: "player678",  isAdmin: false },
+    { name: "player7",      pass: "player789",  isAdmin: false },
+    { name: "player8",      pass: "player890",  isAdmin: false },
+    { name: "player9",      pass: "player999",  isAdmin: false },
+    { name: "player10",     pass: "player990",  isAdmin: false },
+    { name: "player11",     pass: "player654",  isAdmin: false },
+    { name: "player12",     pass: "player764",  isAdmin: false },
+    { name: "player13",     pass: "player3444", isAdmin: false },
+    { name: "player14",     pass: "player098",  isAdmin: false },
+    { name: "player15",     pass: "player543",  isAdmin: false },
+    // DİKKAT: player16 için verilen şifre listesinde eksik vardı, geçici şifre atandı.
+    { name: "player16",     pass: "DEGISTIR_BENI", isAdmin: false },
+    { name: "yedekplayer1", pass: "yedekplayer123", isAdmin: false }
+  ];
+
+  // Geçerli oda listesi (şimdilik sunucu kapalı uyarısı için)
+  const ROOMS = {
+    "Oda1": "Oda1pass",
+    "Oda2": "Oda2pass",
+    "Oda3": "Oda3pass",
+    "Etkinlikodasi": "Etkinlikpass"
+  };
+
+  const COUNTRIES = [
+    "Türkiye", "Almanya", "Japonya", "Güney Kore", "Fransa", "İtalya",
+    "ABD", "Brezilya", "Rusya", "Çin", "Mısır", "Nijerya",
+    "Güney Afrika", "Fas", "Kenya", "Meksika"
+  ];
+
+  const COLORS = [
+    { name: "Kırmızı",   hex: "#c81d3f" },
+    { name: "Pembe",     hex: "#f0a8c6" },
+    { name: "Altın",     hex: "#c9a24b" },
+    { name: "Lacivert",  hex: "#28304a" },
+    { name: "Turkuaz",   hex: "#2fa39a" },
+    { name: "Mor",       hex: "#7a4cae" },
+    { name: "Turuncu",   hex: "#e07a2c" },
+    { name: "Sarı",      hex: "#e8c93f" },
+    { name: "Yeşil",     hex: "#3f9b5b" },
+    { name: "Bordo",     hex: "#6b1626" },
+    { name: "Gri",       hex: "#7a7a7a" },
+    { name: "Siyah",     hex: "#141018" },
+    { name: "Beyaz",     hex: "#f3ede2" },
+    { name: "Deniz Mavisi", hex: "#3d6fa8" },
+    { name: "Zeytin",    hex: "#7d7a3f" },
+    { name: "Fuşya",     hex: "#c22bb0" }
+  ];
+
+  // Renk sahiplikleri — prototipte sadece bu tarayıcı oturumu için geçerli.
+  // Gerçek çoklu-oyuncu çakışma engeli Supabase bağlanınca eklenecek.
+  const colorOwners = {}; // { "#c81d3f": "player1" }
+
+  // ============================================================
+  // STATE
+  // ============================================================
+  let currentUser = null; // { name, isAdmin, displayName, country, color }
+
+  // ============================================================
+  // AÇILIŞ
+  // ============================================================
+  window.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(() => {
+      document.getElementById('menuStage').classList.add('loaded');
+    });
+    buildLoginOptions();
+    buildRoomOptions();
+    buildCountryOptions();
+    buildColorGrid();
+  });
+
+  function buildLoginOptions(){
+    const sel = document.getElementById('loginName');
+    ACCOUNTS.forEach(acc => {
+      const opt = document.createElement('option');
+      opt.value = acc.name;
+      opt.textContent = acc.name;
+      sel.appendChild(opt);
+    });
+  }
+
+  function buildRoomOptions(){
+    const sel = document.getElementById('joinRoomName');
+    Object.keys(ROOMS).forEach(roomName => {
+      const opt = document.createElement('option');
+      opt.value = roomName;
+      opt.textContent = roomName;
+      sel.appendChild(opt);
+    });
+  }
+
+  function buildCountryOptions(){
+    const sel = document.getElementById('countrySelect');
+    COUNTRIES.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = c;
+      sel.appendChild(opt);
+    });
+  }
+
+  function buildColorGrid(){
+    const grid = document.getElementById('colorGrid');
+    grid.innerHTML = '';
+    COLORS.forEach(color => {
+      const sw = document.createElement('div');
+      sw.className = 'swatch';
+      sw.style.background = color.hex;
+      sw.title = color.name;
+      sw.dataset.hex = color.hex;
+
+      const owner = colorOwners[color.hex];
+      const isMine = currentUser && owner === currentUser.name;
+      const isTaken = owner && !isMine;
+
+      if (isTaken) sw.classList.add('taken');
+      if (isMine) sw.classList.add('selected');
+
+      sw.addEventListener('click', () => {
+        if (isTaken) return; // başkasına ait, seçilemez
+        if (!currentUser) return;
+        // Bu kullanıcının önceki rengini serbest bırak
+        Object.keys(colorOwners).forEach(hex => {
+          if (colorOwners[hex] === currentUser.name) delete colorOwners[hex];
+        });
+        colorOwners[color.hex] = currentUser.name;
+        currentUser.color = color.hex;
+        buildColorGrid();
+      });
+
+      grid.appendChild(sw);
+    });
+  }
+
+  // ============================================================
+  // MODAL YARDIMCILARI
+  // ============================================================
+  function openModal(id){ document.getElementById(id).classList.add('open'); }
+  function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+
+  document.querySelectorAll('[data-close]').forEach(btn => {
+    btn.addEventListener('click', () => closeModal(btn.dataset.close));
+  });
+  document.querySelectorAll('.modal-overlay').forEach(ov => {
+    ov.addEventListener('click', (e) => {
+      if (e.target === ov) ov.classList.remove('open');
+    });
+  });
+
+  // ============================================================
+  // GİRİŞ YAP
+  // ============================================================
+  document.getElementById('btnLogin').addEventListener('click', () => {
+    document.getElementById('loginError').classList.remove('show');
+    openModal('modalLogin');
+  });
+
+  document.getElementById('loginSubmit').addEventListener('click', () => {
+    const name = document.getElementById('loginName').value;
+    const pass = document.getElementById('loginPass').value.trim();
+    const errBox = document.getElementById('loginError');
+
+    const acc = ACCOUNTS.find(a => a.name === name && a.pass === pass);
+    if (!acc){
+      errBox.textContent = 'İsim veya şifre hatalı.';
+      errBox.classList.add('show');
+      return;
+    }
+
+    currentUser = {
+      name: acc.name,
+      isAdmin: acc.isAdmin,
+      displayName: acc.name,
+      country: null,
+      color: null
+    };
+
+    document.getElementById('loginPass').value = '';
+    closeModal('modalLogin');
+    unlockMenu();
+  });
+
+  function unlockMenu(){
+    // Kilitli butonları aç
+    document.querySelectorAll('.menu-btn.locked').forEach(b => b.classList.remove('locked'));
+
+    // Üst sağdaki isim rozetini göster
+    const chip = document.getElementById('userChip');
+    chip.classList.remove('hidden');
+    document.getElementById('userChipName').textContent = currentUser.displayName;
+    document.getElementById('userDot').style.background = currentUser.isAdmin ? '#c9a24b' : '#f0a8c6';
+
+    // Giriş butonunu "oturum açık" haline getir
+    const loginBtn = document.getElementById('btnLogin');
+    loginBtn.querySelector('small').textContent = 'Oturum açık: ' + currentUser.displayName;
+  }
+
+  // ============================================================
+  // ODAYA KATIL
+  // ============================================================
+  document.getElementById('btnJoinRoom').addEventListener('click', () => {
+    document.getElementById('joinMsg').classList.remove('show', 'ok');
+    openModal('modalJoin');
+  });
+
+  document.getElementById('joinSubmit').addEventListener('click', () => {
+    const roomName = document.getElementById('joinRoomName').value;
+    const roomPass = document.getElementById('joinRoomPass').value;
+    const msg = document.getElementById('joinMsg');
+
+    if (ROOMS[roomName] !== roomPass){
+      msg.textContent = 'Oda adı veya şifre hatalı.';
+      msg.classList.remove('ok');
+      msg.classList.add('show');
+      return;
+    }
+
+    // Doğrulama başarılı ama gerçek sunucu bağlantısı henüz yok
+    msg.textContent = 'Oda bilgileri doğru, fakat sunucu şu an kapalı. Daha sonra tekrar deneyin.';
+    msg.classList.remove('ok');
+    msg.classList.add('show');
+    // TODO: Supabase realtime kanalına bağlanma buraya eklenecek
+  });
+
+  // ============================================================
+  // ODA KUR (Admin kontrolü)
+  // ============================================================
+  document.getElementById('btnCreateRoom').addEventListener('click', () => {
+    if (!currentUser) return;
+    if (!currentUser.isAdmin){
+      openModal('modalAdminWarn');
+      return;
+    }
+    // TODO: Admin için oda kurma ekranı (Supabase "rooms" tablosuna insert)
+    alert('Oda kurma ekranı yakında eklenecek (Admin onaylandı).');
+  });
+
+  // ============================================================
+  // AYARLAR
+  // ============================================================
+  document.getElementById('btnSettings').addEventListener('click', () => {
+    if (!currentUser) return;
+    document.getElementById('displayNameInput').value = currentUser.displayName;
+    document.getElementById('countrySelect').value = currentUser.country || '';
+    buildColorGrid();
+    openModal('modalSettings');
+  });
+
+  document.querySelectorAll('.tab-btn').forEach(tabBtn => {
+    tabBtn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      tabBtn.classList.add('active');
+      document.getElementById(tabBtn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // Ses sliderları
+  const musicSlider = document.getElementById('musicSlider');
+  const sfxSlider = document.getElementById('sfxSlider');
+  musicSlider.addEventListener('input', () => {
+    document.getElementById('musicVal').textContent = musicSlider.value + '%';
+    // TODO: gerçek müzik ses seviyesine bağlanacak (Howler.js / audio element)
+  });
+  sfxSlider.addEventListener('input', () => {
+    document.getElementById('sfxVal').textContent = sfxSlider.value + '%';
+    // TODO: gerçek efekt ses seviyesine bağlanacak
+  });
+
+  // Hesap kaydet
+  document.getElementById('saveAccountBtn').addEventListener('click', () => {
+    if (!currentUser) return;
+    const newDisplayName = document.getElementById('displayNameInput').value.trim();
+    const newCountry = document.getElementById('countrySelect').value;
+
+    if (newDisplayName) currentUser.displayName = newDisplayName;
+    currentUser.country = newCountry;
+
+    document.getElementById('userChipName').textContent = currentUser.displayName;
+    closeModal('modalSettings');
+    // TODO: Bu bilgiler Supabase "players" tablosuna yazılacak
+  });
+</script>
+
+</body>
+</html>
+
+<!--
+  ============================================================
+  BU KOD: ANA MENÜ EKRANI (index.html)
+  Amaç: Oyunun açılış ekranı. Sabit hesap listesiyle giriş,
+  admin kontrollü oda kurma, oda katılma (şimdilik "sunucu kapalı"
+  uyarısı), ayarlar (ses seviyeleri + hesap adı/ülke/renk seçimi).
+
+  ÖNEMLİ NOTLAR:
+  - Giriş sistemi şu an İSTEMCİ TARAFLI (client-side) sabit bir
+    liste ile çalışıyor. Şifreler tarayıcı kaynak kodunda görünür
+    haldedir. Kapalı/özel bir grup için yeterli ama gerçek güvenlik
+    için ileride Supabase Auth'a geçirilmeli.
+  - Renk seçimi "taken/alınamaz" mantığı şu an sadece TEK TARAYICI
+    OTURUMU için çalışıyor (bellekte tutuluyor). Farklı oyuncuların
+    farklı cihazlarda birbirinin rengini gerçekten alamaması için
+    Supabase "players" tablosu + realtime senkronizasyon gerekiyor.
+  - player16 şifresi eksikti, geçici olarak "DEGISTIR_BENI" atandı.
+
+  Sıradaki adım: Supabase client kurulumu (URL + publishable key),
+  players/rooms tabloları, ve yukarıdaki TODO'lu yerlerin gerçek
+  Supabase çağrılarına bağlanması.
+  ============================================================
+-->
