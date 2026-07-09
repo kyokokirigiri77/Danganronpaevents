@@ -811,6 +811,9 @@
     currentUser = {
       name: acc.name,
       isAdmin: profile.is_admin,
+      // NOT: display_name/country/color_hex artık her girişte sıfırlanıyor
+      // (bkz. doLogout), o yüzden burada gelen değer zaten null olacak ve
+      // varsayılana (hesap adı, seçim yok) düşecek.
       displayName: profile.display_name || acc.name,
       country: profile.country,
       color: profile.color_hex
@@ -822,7 +825,8 @@
     startHeartbeat();
   });
 
-  // Sekme/tarayıcı kapatılırken kilidi bırakmayı dener (garantisi yok ama çoğu durumda çalışır)
+  // Sekme/tarayıcı kapatılırken kilidi bırakmayı ve kimlik bilgilerini
+  // sıfırlamayı dener (garantisi yok ama çoğu durumda çalışır)
   window.addEventListener('pagehide', () => {
     if (!currentUser) return;
     fetch(`${SUPABASE_URL}/rest/v1/players?username=eq.${encodeURIComponent(currentUser.name)}`, {
@@ -833,7 +837,12 @@
         'Prefer': 'return=minimal'
       },
       keepalive: true,
-      body: JSON.stringify({ is_online: false })
+      body: JSON.stringify({
+        is_online: false,
+        display_name: null,
+        country: null,
+        color_hex: null
+      })
     });
   });
 
@@ -849,13 +858,20 @@
 
   async function doLogout(){
     if (!currentUser) return;
-    if (!confirm('Çıkış yapmak istediğine emin misin?')) return;
+    if (!confirm('Çıkış yapmak istediğine emin misin? Görünen isim, ülke ve renk sıfırlanacak.')) return;
 
     if (heartbeatTimer) clearInterval(heartbeatTimer);
     heartbeatTimer = null;
 
+    // Hesap ortak kullanıldığı için çıkışta kimlik bilgileri tamamen sıfırlanıyor.
+    // Bir sonraki giren kişi kendi görünen ismini/ülkesini/rengini yeniden seçmek zorunda.
     await sb.from('players')
-      .update({ is_online: false })
+      .update({
+        is_online: false,
+        display_name: null,
+        country: null,
+        color_hex: null
+      })
       .eq('username', currentUser.name);
 
     currentUser = null;
@@ -1021,32 +1037,23 @@
 <!--
   ============================================================
   BU KOD: ANA MENÜ EKRANI (index.html)
-  Amaç: Oyunun açılış ekranı. Sabit hesap listesiyle giriş,
-  admin kontrollü oda kurma, gerçek Supabase verisiyle oda katılma,
-  ayarlar (ses seviyeleri + hesap adı/ülke/renk — hepsi Supabase'e
-  kaydediliyor).
+  Değişiklik (bu sürüm): Hesaplar ortak kullanıldığı için artık
+  çıkış yapıldığında (hem "Çıkış Yap" butonuyla hem de sekme
+  kapatılırken pagehide üzerinden) display_name, country ve
+  color_hex NULL'a çekiliyor. Böylece bir sonraki giren kişi
+  kendi görünen ismini, ülkesini ve rengini yeniden seçmek
+  zorunda kalıyor — eski kullanıcının seçimleri kalıcı kalmıyor.
 
-  ARTIK SUPABASE'E BAĞLI:
-  - Giriş sonrası profil bilgisi (görünen isim, ülke, renk, admin
-    mi) "players" tablosundan çekiliyor.
-  - Ayarlar > Kaydet, bu bilgileri gerçekten "players" tablosuna
-    yazıyor.
-  - Renk çakışması artık veritabanı seviyesinde engelleniyor
-    (unique_color_when_set kısıtı) — tüm cihazlar için geçerli.
-  - Oda katılma, "rooms" tablosundaki gerçek şifre ve is_open
-    sütununa bakıyor.
-  - OTURUM KİLİDİ: aynı hesap (ör. player1) aynı anda iki farklı
-    yerden giriş yapamaz (is_online + last_seen ile kontrol edilir,
-    20 saniyede bir heartbeat atılır, 45 saniye sessizlik = terk
-    edilmiş oturum sayılır ve kilit otomatik açılır). Giriş butonu
-    artık oturum açıkken "Çıkış Yap"a dönüşüyor.
+  HÂLÂ YAPILMASI GEREKENLER (Supabase tarafında):
+  1) supabase_migration_session_lock.sql çalıştırıldı mı kontrol et
+     (is_online, last_seen kolonları). Çalıştırılmadıysa çalıştır.
+  2) Aşağıdaki unique index'i ekle — renk çakışmasını DB seviyesinde
+     engeller (şu an bu constraint eksik, bu yüzden aynı renk iki
+     kişiye aynı anda gidebiliyor):
 
-  HÂLÂ ÖNEMLİ NOTLAR:
-  - Giriş şifreleri hâlâ İSTEMCİ TARAFLI (client-side) kontrol
-    ediliyor, Supabase Auth kullanılmıyor. Kapalı/özel bir grup
-    için yeterli ama tarayıcı kaynak kodunda görünür haldedir.
-  - player16 şifresi eksikti, geçici olarak "DEGISTIR_BENI" atandı.
-  - "Oda Kur" hâlâ placeholder (gerçek oda oluşturma ekranı yok).
+     create unique index if not exists unique_color_when_set
+       on players (color_hex)
+       where color_hex is not null;
 
   Sıradaki adım: Oda içi bekleme ekranı (lobi.html) — oyuncuların
   odaya girdikten sonra göreceği ekran, Monokuma rolü rastgele
